@@ -63,7 +63,7 @@ pipeline {
                 script {
                     docker.image('bitnami/kubectl:latest').inside {
                         sh """
-                            sed -i "s|REPLACE_IMAGE|${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}|g" train-schedule-kube-canary.yml > prod-canary-updated.yml
+                            sed -i "s|REPLACE_IMAGE|${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}|g" train-schedule-kube-canary.yml > prod-canary-updated.yml
                             kubectl apply -f prod-canary-updated.yml
                         """
                     }
@@ -86,8 +86,8 @@ pipeline {
 
                 script {
                     sh """
-                        sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${BUILD_NUMBER}|g' train-schedule-kube.yml > prod-updated.yml
-                        sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${BUILD_NUMBER}|g' train-schedule-kube-canary.yml > prod-canary-updated.yml
+                        sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g' train-schedule-kube.yml > prod-updated.yml
+                        sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g' train-schedule-kube-canary.yml > prod-canary-updated.yml
                     """
 
                     docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
