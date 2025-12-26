@@ -14,7 +14,7 @@ pipeline {
                 archiveArtifacts artifacts: 'dist/trainSchedule.zip'
             }
         }
-        stage ('check"){
+        stage ('check') {
                steps{
                    sh 'which docker || echo "docker not found"'
                }    
