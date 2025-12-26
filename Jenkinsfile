@@ -15,7 +15,8 @@ pipeline {
                 archiveArtifacts artifacts: 'dist/trainSchedule.zip'
             }
         }
-       stage('Docker Test') {
+
+        stage('Docker Test') {
             steps {
                 sh 'docker ps'
             }
@@ -46,7 +47,7 @@ pipeline {
             }
         }
 
-       stage('CanaryDeploy') {
+        stage('CanaryDeploy') {
             when {
                 expression { env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'main' }
             }
@@ -61,7 +62,9 @@ pipeline {
                     """
                     docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
                         sh '''
-                            echo "$KUBECONFIG_CONTENT" > ~/.kube/config
+                            mkdir -p /tmp/.kube
+                            echo "$KUBECONFIG_CONTENT" > /tmp/.kube/config
+                            export KUBECONFIG=/tmp/.kube/config
                             kubectl apply -f prod-canary-updated.yml
                         '''
                     }
@@ -88,7 +91,9 @@ pipeline {
 
                     docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
                         sh '''
-                            echo "$KUBECONFIG_CONTENT" > ~/.kube/config
+                            mkdir -p /tmp/.kube
+                            echo "$KUBECONFIG_CONTENT" > /tmp/.kube/config
+                            export KUBECONFIG=/tmp/.kube/config
                             kubectl apply -f prod-canary-updated.yml
                             kubectl apply -f prod-updated.yml
                         '''
