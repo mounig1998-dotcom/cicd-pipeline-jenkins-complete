@@ -46,7 +46,7 @@ pipeline {
             }
         }
 
-        stage('CanaryDeploy') {
+       stage('CanaryDeploy') {
             when {
                 expression { env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'main' }
             }
@@ -55,11 +55,15 @@ pipeline {
             }
             steps {
                 script {
-                    docker.image('bitnami/kubectl:latest').inside {
-                        sh """
-                            sed -i "s|REPLACE_IMAGE|${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}|g" train-schedule-kube-canary.yml > prod-canary-updated.yml
+                    sh """
+                        sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g' train-schedule-kube-canary.yml > prod-canary-updated.yml
+                        cat prod-canary-updated.yml
+                    """
+                    docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
+                        sh '''
+                            echo "$KUBECONFIG_CONTENT" > ~/.kube/config
                             kubectl apply -f prod-canary-updated.yml
-                        """
+                        '''
                     }
                 }
             }
