@@ -14,9 +14,9 @@ pipeline {
             }
         }
 
-     stage('Check Docker in Jenkins') {
+        stage('Check Docker') {
             steps {
-                bat 'docker --version'
+                sh 'docker --version'
             }
         }
 
