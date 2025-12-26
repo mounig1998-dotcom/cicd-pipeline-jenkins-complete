@@ -1,10 +1,11 @@
 pipeline {
     agent any
 
-    environment {
+       environment {
         //be sure to replace "bhavukm" with your own Docker Hub username
         DOCKER_IMAGE_NAME = "mounikagorla/train-schedule"
     }
+
     stages {
         stage('Build') {
             steps {
@@ -14,14 +15,12 @@ pipeline {
             }
         }
 
-        stage('Check Docker') {
-            steps {
-                sh 'docker --version'
-            }
-        }
-
         stage('Build Docker Image') {
-           
+            when {
+                expression {
+                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
+                }
+            }
             steps {
                 script {
                     app = docker.build(DOCKER_IMAGE_NAME)
@@ -31,49 +30,82 @@ pipeline {
                 }
             }
         }
+
+        stage('Debug Branch') {
+            steps {
+                echo "GIT_BRANCH: ${env.GIT_BRANCH}"
+            }
+        }
+
         stage('Push Docker Image') {
-           
+            when {
+                expression {
+                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
+                }
+            }
             steps {
                 script {
-                    docker.withRegistry('https://registry.hub.docker.com', 'docker_hub_login') {
+                    docker.withRegistry('https://registry.hub.docker.com', '17167163-b09e-4b3a-a9ea-f08bee525e5b') {
                         app.push("${env.BUILD_NUMBER}")
                         app.push("latest")
                     }
                 }
             }
         }
+
         stage('CanaryDeploy') {
-           
-            environment { 
+            when {
+                expression {
+                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
+                }
+            }
+            environment {
                 CANARY_REPLICAS = 1
             }
             steps {
-                kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube-canary.yml',
-                    enableConfigSubstitution: true
-                )
+                script {
+                    docker.image('bitnami/kubectl:latest').inside {
+                        sh '''
+                            sed -i "s|REPLACE_IMAGE|5460/train-schedule:${BUILD_NUMBER}|g" train-schedule-kube-canary.yml > prod-canary-updated.yml
+                            kubectl apply -f prod-canary-updated.yml
+                        '''
+                    }
+                }
             }
         }
+
         stage('DeployToProduction') {
-           
-            environment { 
-                CANARY_REPLICAS = 0
-            }
-            steps {
-                input 'Deploy to Production?'
-                milestone(1)
-                kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube-canary.yml',
-                    enableConfigSubstitution: true
-                )
-                kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube.yml',
-                    enableConfigSubstitution: true
-                )
+    when {
+        expression {
+            return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
+        }
+    }
+
+    environment {
+        CANARY_REPLICAS = 0
+    }
+
+    steps {
+        input 'Deploy to Production?'
+        milestone(1)
+
+        script {
+            sh """
+                sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${BUILD_NUMBER}|g' train-schedule-kube.yml > prod-updated.yml
+                sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${BUILD_NUMBER}|g' train-schedule-kube-canary.yml > prod-canary-updated.yml
+            """
+
+            docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
+                sh '''
+                    echo "$KUBECONFIG_CONTENT" > ~/.kube/config
+                    kubectl apply -f prod-canary-updated.yml
+                    kubectl apply -f prod-updated.yml
+                '''
             }
         }
     }
 }
+
+    }
+}
+
