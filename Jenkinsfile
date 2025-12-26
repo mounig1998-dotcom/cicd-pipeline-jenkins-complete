@@ -48,57 +48,14 @@ pipeline {
         }
 
         stage('CanaryDeploy') {
-            when {
-                expression { env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'main' }
-            }
-            environment {
-                CANARY_REPLICAS = 1
-            }
-            steps {
-                script {
-                    sh """
-                        sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g' train-schedule-kube-canary.yml > prod-canary-updated.yml
-                        cat prod-canary-updated.yml
-                    """
-                    docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
-                        sh '''
-                            mkdir -p /tmp/.kube
-                            echo "$KUBECONFIG_CONTENT" > /tmp/.kube/config
-                            export KUBECONFIG=/tmp/.kube/config
-                            kubectl apply -f prod-canary-updated.yml
-                        '''
-                    }
-                }
+          steps {
+                echo "Branch detected"
             }
         }
 
         stage('DeployToProduction') {
-            when {
-                expression { env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'main' }
-            }
-            environment {
-                CANARY_REPLICAS = 0
-            }
             steps {
-                input 'Deploy to Production?'
-                milestone(1)
-
-                script {
-                    sh """
-                        sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g' train-schedule-kube.yml > prod-updated.yml
-                        sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g' train-schedule-kube-canary.yml > prod-canary-updated.yml
-                    """
-
-                    docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
-                        sh '''
-                            mkdir -p /tmp/.kube
-                            echo "$KUBECONFIG_CONTENT" > /tmp/.kube/config
-                            export KUBECONFIG=/tmp/.kube/config
-                            kubectl apply -f prod-canary-updated.yml
-                            kubectl apply -f prod-updated.yml
-                        '''
-                    }
-                }
+                echo "Branch detected"
             }
         }
     }
