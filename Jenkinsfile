@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+        DOCKER_HOST = "tcp://localhost:2375"
         DOCKER_IMAGE_NAME = "mounikagorla/train-schedule"
     }
 
