@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         DOCKER_IMAGE_NAME = "mounikagorla/train-schedule"
-        DOCKER_HOST = "tcp://localhost:2375"
     }
 
     stages {
