@@ -45,7 +45,7 @@ pipeline {
             }
             steps {
                 script {
-                    docker.withRegistry('https://registry.hub.docker.com', '17167163-b09e-4b3a-a9ea-f08bee525e5b') {
+                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-creds') {
                         app.push("${env.BUILD_NUMBER}")
                         app.push("latest")
                     }
@@ -66,7 +66,7 @@ pipeline {
                 script {
                     docker.image('bitnami/kubectl:latest').inside {
                         sh '''
-                            sed -i "s|REPLACE_IMAGE|5460/train-schedule:${BUILD_NUMBER}|g" train-schedule-kube-canary.yml > prod-canary-updated.yml
+                            sed -i "s|REPLACE_IMAGE|mounikagorla/train-schedule:${BUILD_NUMBER}|g" train-schedule-kube-canary.yml > prod-canary-updated.yml
                             kubectl apply -f prod-canary-updated.yml
                         '''
                     }
