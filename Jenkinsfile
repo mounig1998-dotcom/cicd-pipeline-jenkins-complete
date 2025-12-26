@@ -1,25 +1,34 @@
 pipeline {
-    agent any
+  agent any
+  environment {
+    DOCKER_IMAGE_NAME = 'mounikagorla/train-schedule'
+  }
 
-       environment {
-        //be sure to replace "bhavukm" with your own Docker Hub username
-        DOCKER_IMAGE_NAME = "mounikagorla/train-schedule"
-    }
-
-    stages {
+  stages {
         stage('Build') {
-            steps {
-                echo 'Running build automation'
-                sh './gradlew build --no-daemon'
-                archiveArtifacts artifacts: 'dist/trainSchedule.zip'
+        agent {
+            docker {
+            image 'eclipse-temurin:8-jdk'   // required
+            args  '-u 0:0'                  // optional
             }
         }
-
+        steps {
+            sh '''
+            set -eux
+            apt-get update
+            apt-get install -y curl ca-certificates gnupg
+            curl -fsSL https://deb.nodesource.com/setup_14.x | bash -
+            apt-get install -y nodejs
+            export ORG_GRADLE_PROJECT_nodeDownload=false
+            export GRADLE_OPTS="$GRADLE_OPTS -Dcom.moowork.node.download=false"
+            ./gradlew --no-daemon clean build
+            '''
+            archiveArtifacts artifacts: 'dist/trainSchedule.zip', allowEmptyArchive: true
+        }
+        }
         stage('Build Docker Image') {
             when {
-                expression {
-                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
-                }
+                branch 'master'
             }
             steps {
                 script {
@@ -30,18 +39,9 @@ pipeline {
                 }
             }
         }
-
-        stage('Debug Branch') {
-            steps {
-                echo "GIT_BRANCH: ${env.GIT_BRANCH}"
-            }
-        }
-
         stage('Push Docker Image') {
             when {
-                expression {
-                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
-                }
+                branch 'master'
             }
             steps {
                 script {
@@ -52,60 +52,42 @@ pipeline {
                 }
             }
         }
-
         stage('CanaryDeploy') {
             when {
-                expression {
-                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
-                }
+                branch 'master'
             }
-            environment {
+            environment { 
                 CANARY_REPLICAS = 1
             }
             steps {
-                script {
-                    docker.image('bitnami/kubectl:latest').inside {
-                        sh '''
-                            sed -i "s|REPLACE_IMAGE|mounikagorla/train-schedule:${BUILD_NUMBER}|g" train-schedule-kube-canary.yml > prod-canary-updated.yml
-                            kubectl apply -f prod-canary-updated.yml
-                        '''
-                    }
-                }
+                kubernetesDeploy(
+                    kubeconfigId: 'kubeconfig',
+                    configs: 'train-schedule-kube-canary.yml',
+                    enableConfigSubstitution: true
+                )
             }
         }
-
         stage('DeployToProduction') {
-    when {
-        expression {
-            return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
-        }
-    }
-
-    environment {
-        CANARY_REPLICAS = 0
-    }
-
-    steps {
-        input 'Deploy to Production?'
-        milestone(1)
-
-        script {
-            sh """
-                sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${BUILD_NUMBER}|g' train-schedule-kube.yml > prod-updated.yml
-                sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${BUILD_NUMBER}|g' train-schedule-kube-canary.yml > prod-canary-updated.yml
-            """
-
-            docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
-                sh '''
-                    echo "$KUBECONFIG_CONTENT" > ~/.kube/config
-                    kubectl apply -f prod-canary-updated.yml
-                    kubectl apply -f prod-updated.yml
-                '''
+            when {
+                branch 'master'
+            }
+            environment { 
+                CANARY_REPLICAS = 0
+            }
+            steps {
+                input 'Deploy to Production?'
+                milestone(1)
+                kubernetesDeploy(
+                    kubeconfigId: 'kubeconfig',
+                    configs: 'train-schedule-kube-canary.yml',
+                    enableConfigSubstitution: true
+                )
+                kubernetesDeploy(
+                    kubeconfigId: 'kubeconfig',
+                    configs: 'train-schedule-kube.yml',
+                    enableConfigSubstitution: true
+                )
             }
         }
-    }
+   }
 }
-
-    }
-}
-
