@@ -1,34 +1,24 @@
 pipeline {
-  agent any
-  environment {
-    DOCKER_IMAGE_NAME = 'mounikagorla/train-schedule'
-  }
+    agent any
 
-  stages {
+    environment {
+        DOCKER_IMAGE_NAME = "mounikagorla/train-schedule"
+    }
+
+    stages {
         stage('Build') {
-        agent {
-            docker {
-            image 'eclipse-temurin:8-jdk'   // required
-            args  '-u 0:0'                  // optional
+            steps {
+                echo 'Running build automation'
+                sh './gradlew build --no-daemon'
+                archiveArtifacts artifacts: 'dist/trainSchedule.zip'
             }
         }
-        steps {
-            sh '''
-            set -eux
-            apt-get update
-            apt-get install -y curl ca-certificates gnupg
-            curl -fsSL https://deb.nodesource.com/setup_14.x | bash -
-            apt-get install -y nodejs
-            export ORG_GRADLE_PROJECT_nodeDownload=false
-            export GRADLE_OPTS="$GRADLE_OPTS -Dcom.moowork.node.download=false"
-            ./gradlew --no-daemon clean build
-            '''
-            archiveArtifacts artifacts: 'dist/trainSchedule.zip', allowEmptyArchive: true
-        }
-        }
+
         stage('Build Docker Image') {
             when {
-                branch 'master'
+                expression {
+                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
+                }
             }
             steps {
                 script {
@@ -39,55 +29,81 @@ pipeline {
                 }
             }
         }
+
+        stage('Debug Branch') {
+            steps {
+                echo "GIT_BRANCH: ${env.GIT_BRANCH}"
+            }
+        }
+
         stage('Push Docker Image') {
             when {
-                branch 'master'
+                expression {
+                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
+                }
             }
             steps {
                 script {
-                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-creds') {
+                    docker.withRegistry('https://registry.hub.docker.com', '17167163-b09e-4b3a-a9ea-f08bee525e5b') {
                         app.push("${env.BUILD_NUMBER}")
                         app.push("latest")
                     }
                 }
             }
         }
+
         stage('CanaryDeploy') {
             when {
-                branch 'master'
+                expression {
+                    return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
+                }
             }
-            environment { 
+            environment {
                 CANARY_REPLICAS = 1
             }
             steps {
-                kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube-canary.yml',
-                    enableConfigSubstitution: true
-                )
+                script {
+                    docker.image('bitnami/kubectl:latest').inside {
+                        sh '''
+                            sed -i "s|REPLACE_IMAGE|5460/train-schedule:${BUILD_NUMBER}|g" train-schedule-kube-canary.yml > prod-canary-updated.yml
+                            kubectl apply -f prod-canary-updated.yml
+                        '''
+                    }
+                }
             }
         }
+
         stage('DeployToProduction') {
-            when {
-                branch 'master'
-            }
-            environment { 
-                CANARY_REPLICAS = 0
-            }
-            steps {
-                input 'Deploy to Production?'
-                milestone(1)
-                kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube-canary.yml',
-                    enableConfigSubstitution: true
-                )
-                kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube.yml',
-                    enableConfigSubstitution: true
-                )
+    when {
+        expression {
+            return env.GIT_BRANCH?.endsWith('master') || env.GIT_BRANCH?.endsWith('main')
+        }
+    }
+
+    environment {
+        CANARY_REPLICAS = 0
+    }
+
+    steps {
+        input 'Deploy to Production?'
+        milestone(1)
+
+        script {
+            sh """
+                sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${BUILD_NUMBER}|g' train-schedule-kube.yml > prod-updated.yml
+                sed 's|\\\${DOCKER_IMAGE_NAME}|${DOCKER_IMAGE_NAME}|g; s|\\\${BUILD_NUMBER}|${BUILD_NUMBER}|g' train-schedule-kube-canary.yml > prod-canary-updated.yml
+            """
+
+            docker.image('bitnami/kubectl:latest').inside('--entrypoint=""') {
+                sh '''
+                    echo "$KUBECONFIG_CONTENT" > ~/.kube/config
+                    kubectl apply -f prod-canary-updated.yml
+                    kubectl apply -f prod-updated.yml
+                '''
             }
         }
-   }
+    }
+}
+
+    }
 }
