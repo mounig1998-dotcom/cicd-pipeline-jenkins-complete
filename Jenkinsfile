@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HOST = "tcp://localhost:2375"
+        DOCKER_HOST = "tcp://host.docker.internal:2375"
         DOCKER_IMAGE_NAME = "mounikagorla/train-schedule"
     }
 
